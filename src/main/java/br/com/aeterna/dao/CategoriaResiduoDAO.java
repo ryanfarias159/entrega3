@@ -9,35 +9,32 @@ import java.util.List;
 
 public class CategoriaResiduoDAO {
 
-    // 1. INSERÇÃO (INSERT) com PreparedStatement
-    public void inserir(CategoriaResiduo categoria) {
-        String sql = "INSERT INTO public.categorias_residuos (nome, codigo, descricao) VALUES (?, ?, ?)";
+    // CREATE
+    public Long inserir(CategoriaResiduo categoria) throws SQLException {
+        String sql = "INSERT INTO public.categorias_residuos (nome, codigo, descricao) VALUES (?, ?, ?) RETURNING id";
 
         try (Connection conn = ConexaoFactory.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, categoria.getNome());
             stmt.setString(2, categoria.getCodigo());
             stmt.setString(3, categoria.getDescricao());
 
-            stmt.executeUpdate();
-
-            // Recupera o ID numérico sequencial gerado automaticamente pelo banco
-            try (ResultSet rs = stmt.getGeneratedKeys()) {
+            try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    categoria.setId(rs.getLong(1));
+                    Long idGerado = rs.getLong("id");
+                    categoria.setId(idGerado);
+                    return idGerado;
                 }
             }
-            System.out.println("-> Categoria inserida com sucesso! ID gerado: " + categoria.getId());
-
-        } catch (SQLException e) {
-            System.err.println("Erro ao inserir categoria: " + e.getMessage());
         }
+        return null;
     }
 
-    // 2. CONSULTA GERAL (SELECT *) com mapeamento ResultSet -> Objeto Java
-    public List<CategoriaResiduo> listar() {
-        String sql = "SELECT id, nome, codigo, descricao, criado_em, atualizado_em FROM public.categorias_residuos";
+    // READ ALL
+    public List<CategoriaResiduo> listar() throws SQLException {
+        String sql = "SELECT id, nome, codigo, descricao, criado_em, atualizado_em " +
+                     "FROM public.categorias_residuos ORDER BY id ASC";
         List<CategoriaResiduo> lista = new ArrayList<>();
 
         try (Connection conn = ConexaoFactory.getConnection();
@@ -45,31 +42,78 @@ public class CategoriaResiduoDAO {
              ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
-                CategoriaResiduo cat = new CategoriaResiduo();
-                
-                // Mapeamento dos tipos do Banco para Java (Long)
-                cat.setId(rs.getLong("id"));
-                cat.setNome(rs.getString("nome"));
-                cat.setCodigo(rs.getString("codigo"));
-                cat.setDescricao(rs.getString("descricao"));
-                
-                Timestamp criadoEmTs = rs.getTimestamp("criado_em");
-                if (criadoEmTs != null) {
-                    cat.setCriadoEm(criadoEmTs.toLocalDateTime());
-                }
-
-                Timestamp atualizadoEmTs = rs.getTimestamp("atualizado_em");
-                if (atualizadoEmTs != null) {
-                    cat.setAtualizadoEm(atualizadoEmTs.toLocalDateTime());
-                }
-
-                lista.add(cat);
+                lista.add(mapearResultSet(rs));
             }
+        }
+        return lista;
+    }
 
-        } catch (SQLException e) {
-            System.err.println("Erro ao listar categorias: " + e.getMessage());
+    // READ BY ID
+    public CategoriaResiduo buscarPorId(Long id) throws SQLException {
+        String sql = "SELECT id, nome, codigo, descricao, criado_em, atualizado_em " +
+                     "FROM public.categorias_residuos WHERE id = ?";
+
+        try (Connection conn = ConexaoFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapearResultSet(rs);
+                }
+            }
+        }
+        return null;
+    }
+
+    // UPDATE
+    public boolean atualizar(CategoriaResiduo categoria) throws SQLException {
+        String sql = "UPDATE public.categorias_residuos " +
+                     "SET nome = ?, codigo = ?, descricao = ?, atualizado_em = CURRENT_TIMESTAMP " +
+                     "WHERE id = ?";
+
+        try (Connection conn = ConexaoFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, categoria.getNome());
+            stmt.setString(2, categoria.getCodigo());
+            stmt.setString(3, categoria.getDescricao());
+            stmt.setLong(4, categoria.getId());
+
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    // DELETE
+    public boolean excluir(Long id) throws SQLException {
+        String sql = "DELETE FROM public.categorias_residuos WHERE id = ?";
+
+        try (Connection conn = ConexaoFactory.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, id);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    private CategoriaResiduo mapearResultSet(ResultSet rs) throws SQLException {
+        CategoriaResiduo cat = new CategoriaResiduo();
+        cat.setId(rs.getLong("id"));
+        cat.setNome(rs.getString("nome"));
+        cat.setCodigo(rs.getString("codigo"));
+        cat.setDescricao(rs.getString("descricao"));
+
+        Timestamp criadoEm = rs.getTimestamp("criado_em");
+        if (criadoEm != null) {
+            cat.setCriadoEm(criadoEm.toLocalDateTime());
         }
 
-        return lista;
+        Timestamp atualizadoEm = rs.getTimestamp("atualizado_em");
+        if (atualizadoEm != null) {
+            cat.setAtualizadoEm(atualizadoEm.toLocalDateTime());
+        }
+
+        return cat;
     }
 }
